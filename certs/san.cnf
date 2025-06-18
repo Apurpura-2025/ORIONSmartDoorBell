@@ -1,0 +1,20 @@
+[ req ]
+default_bits       = 2048
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+prompt             = no
+
+[ req_distinguished_name ]
+C  = US
+ST = New York
+L  = Rome
+O  = ORION
+OU = IoT
+CN = 192.168.220.123
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+IP.1 = 192.168.220.123
+DNS.2 = raspberrypi
