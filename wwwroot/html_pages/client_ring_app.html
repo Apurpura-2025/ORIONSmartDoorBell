@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Character encoding -->
+    <meta charset="UTF-8" />
+
+    <!-- Responsive design for mobile devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Page title shown in browser tab -->
+    <title>"Smart" Ring Doorbell - ORION STEM (Summer 2025)</title>
+
+    <!-- Include Paho MQTT JavaScript client via CDN (WebSocket version) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.2/mqttws31.min.js"></script>
+
+    <!-- Include SweetAlert2 for custom alert popups -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Link to custom CSS for styling the doorbell app -->
+    <link rel="stylesheet" href="/client_app_styles.css" />
+</head>
+<body>
+    <!-- Main container for content -->
+    <div class="bordered-div">
+
+        <!-- ORION Logo for branding -->
+        <img style="width:300px" src="https://orionassured.com/wp-content/uploads/2024/03/ORION-logo-2-300x71.png" />
+
+        <!-- Page headings -->
+        <h1> GPT-4o (AI) Powered "Smart" Door Bell </h1>
+        <h2> QSI Ring & Run STEM Camp (Summer 2025) </h2>
+
+        <!-- MJPEG video stream from Raspberry Pi camera -->
+        <!-- Initially hidden; shown dynamically when camera is turned on -->
+        <!-- ✅ MJPEG Stream Container -->
+        <div class="video-container">
+            <img id="camera_image" src="/stream.mjpg" style="display: none;" />
+        </div>
+
+        <!-- Spinner animation shown while GPT is processing -->
+        <div class="spinner" id="spinner" style="margin-left: 47%; display: none;"></div>
+
+        <br />
+
+        <!-- Control buttons for user interaction -->
+        <div class="controls">
+            <button id="camera_control">Start Camera</button>   <!-- Toggle camera -->
+            <button id="listen_control">Listen</button>         <!-- Listen to door microphone -->
+            <button id="talk_control">Talk</button>             <!-- Speak into doorbell -->
+            <button id="gpt_control">Ask GPT</button>           <!-- Ask GPT to describe image -->
+            <button id="volume_up">Vol +</button>               <!-- Increase volume -->
+            <button id="volume_down">Vol -</button>             <!-- Decrease volume -->
+        </div>
+
+        <br>
+
+        <!-- Audio player for listening to audio streamed from the door mic -->
+        <audio id="audioPlayer" style="display: none;"></audio>
+
+        <!-- GPT description heading -->
+        <div id="response_content" style="text-align: center;">
+            <h3> Here's a description of what I see... </h3>
+        </div>
+
+        <!-- Area where GPT's response is displayed -->
+        <div id="response" style="margin-left: 17%; font-size: 1.2em;"></div>
+    </div>
+
+    <!-- Link to client-side JavaScript logic (MQTT, buttons, GPT, etc.) -->
+    <script src="/client_app.js"></script>
+</body>
+</html>
