@@ -11,7 +11,7 @@
 - Ensure secure/encrypted communication between theDoorbell and the Web App.
 - Whatever else you can make it do…
 ## Using...
-- Raspberry Pi 4B running Debian-based Raspberry PI OS (Linux) 
+- Raspberry Pi 5 running Debian-based Raspberry PI OS (Linux) 
 - Electronic components that implement the doorbell device 
 - OpenAI GPT-4o model
 - Network (Cyber) security protocols and tools
