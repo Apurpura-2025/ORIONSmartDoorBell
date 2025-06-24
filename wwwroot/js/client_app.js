@@ -29,7 +29,7 @@ const MAX_RETRIES = 3;
 // === CONNECTION SECURITY CONFIG ===
 const isSecure = location.protocol === "https:";
 const BROKER_PORT = isSecure ? 9002 : 9001;
-const brokerHost = "192.168.220.124";  // Replace with your Pi's IP
+const brokerHost = "PI's IP";  // Replace with your Pi's IP
 const mqttPath = "/mqtt";
 
 //🔌📩🔄⚠️✅📡❌📤🎤🎧
