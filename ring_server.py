@@ -1,35 +1,43 @@
-# === Standard Library and Third-Party Imports ===
-import io, base64, sys, requests, threading, logging, socketserver
-from http import server
-import time, os, ssl, argparse, subprocess
-from gpiozero import Button, MotionSensor
-from picamera2 import Picamera2
-import paho.mqtt.client as paho
-from threading import Condition
-import pygame, cv2, numpy as np
-from dotenv import load_dotenv
-import re
-import audioUtils
+# === Importing Useful Tools ===
 
+# === These Python Libraries are needed to run the server ===
+# Installed via setup_orion_doorbell.sh
+import io, base64, sys, requests, threading, logging, socketserver    # Basic tools for input/output, networking, and logging
+from http import server                         # Allows this program to act like a small server
+import time, os, ssl, argparse, subprocess      # Tools for working with time, files, security, command-line arguments, and running other programs 
+from gpiozero import Button, MotionSensor       # For using buttons and motion sensors connected to the Raspberry Pi
+from picamera2 import Picamera2                 # Used to control Raspberry Pi camera
+import paho.mqtt.client as paho                 # For sending messages over the internet or local network (used for communication between devices)
+from threading import Condition                 # Used to safely share data between parts of the program that run at the same time
+import pygame, cv2, numpy as np                 # For playing sounds (pygame), working with images (cv2), and doing math with arrays (numpy)
+from dotenv import load_dotenv                  # Helps load settings from a hidden file (.env) like secret keys
+import re                                       # For reading and matching patterns in text
+import audioUtils                               # File made for playing and recording sound
+
+# === Emojis for fun and alerts ===
+# These can be used to show messages like "✅ Success", "❌ Error", or "📡 Camera Streaming"
 #⚠️📸🛑❌🚫🕒✅👀🤖📩🎤🔈📡🔌🌐
 
-# Suppress the pygame support prompt message
+# === Prevent unnecessary messages from pygame ===
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 
-# Load environment variables from .env file
+# === Load secret settings from a .env file ===
+# This file is hidden but contains important information, like API keys
 load_dotenv()
-# Retrieve the OpenAI API key from environment
+
+# === Get the AI key from that hidden file ===
+# This key allows the program to ask questions to an AI model like ChatGPT
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize global state variables
-camera_on = False                          # Flag to indicate if camera is active
-manual_override = False                    # Used in motion mode to prevent reactivation
-manual_override_reset_time = 60            # Time (in seconds) before override resets
-manual_override_reset_thread = None        # Thread that resets manual override
-output = None                              # Will hold an instance of StreamingOutput
-selected_output_device = None              # Stores selected audio output device
-last_bell_time = 0                         # global cooldown tracker
-BELL_COOLDOWN_SECONDS = 5
+# === Set Up Some Starting Conditions(global variables) ===
+camera_on = False                          # Is the camera currently running? (No by default)
+manual_override = False                    # Used in motion detection mode to stop the camera from turning back on automatically
+manual_override_reset_time = 60            # If override is on, how long should we wait (in seconds) before turning it off?
+manual_override_reset_thread = None        # This will hold a background timer to reset the override
+output = None                              # Will later hold the video output that gets sent to the web app
+selected_output_device = None              # Saves the name of the speaker being used
+last_bell_time = 0                         # When was the last time the doorbell was pressed?
+BELL_COOLDOWN_SECONDS = 5                  # How many seconds must pass before the bell can ring again
 
 # === Class for MJPEG Streaming ===
 class StreamingOutput:
