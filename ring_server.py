@@ -269,7 +269,7 @@ def handleButtonMode():
         env["DISPLAY"] = ":0"
         env["PULSE_RUNTIME_PATH"] = f"/run/user/{os.getuid()}/pulse"
         subprocess.Popen(
-            ["ffplay", "-nodisp", "-autoexit", "bell1.mp3"],
+            ["ffplay", "-nodisp", "-autoexit", "./sounds/bell1.mp3"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env=env
@@ -286,10 +286,10 @@ def handleButtonMode():
 def handleGPTRequest():
     
     #Comment out this line when AI integration is enabled
-    #client.publish(GPT_RESPONSE_TOPIC, payload="Awaiting AI integration...", qos=0, retain=False)
+    client.publish(GPT_RESPONSE_TOPIC, payload="Awaiting AI integration...", qos=0, retain=False)
     
     ## AI intergration. Delete """ on either end to enable.
-    client.publish(GPT_RESPONSE_TOPIC, payload="waiting for the AI to Answer...", qos=0, retain=False)
+    """client.publish(GPT_RESPONSE_TOPIC, payload="waiting for the AI to Answer...", qos=0, retain=False)
     try:
         buffer = io.BytesIO()
         camera.capture_file(buffer, format='jpeg')
@@ -318,7 +318,7 @@ def handleGPTRequest():
     except Exception as e:
         error_msg = f"❌ GPT error: {e}"
         print(error_msg)
-        client.publish(GPT_RESPONSE_TOPIC, payload=error_msg, qos=0, retain=False)
+        client.publish(GPT_RESPONSE_TOPIC, payload=error_msg, qos=0, retain=False)"""
 
 # === MQTT Callback Handlers ===
 def on_message(client, userdata, msg):
