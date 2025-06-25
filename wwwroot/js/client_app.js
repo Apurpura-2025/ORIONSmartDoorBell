@@ -36,99 +36,123 @@ const BROKER_PORT = isSecure ? 9002 : 9001;         // If using HTTPS, use port 
 const brokerHost = "PI's IP";                       // Replace with your Pi's IP. This should be the IP address of your Raspberry Pi (example: "192.168.1.100") 
 const mqttPath = "/mqtt";                           // This is the path used by the browser to connect to the MQTT server over WebSocket
 
-
+// === Emojis for fun and alerts ===
+// These can be used to show messages like ,✅ Connected to MQTT broker, ❌ Failed to load MJPEG stream 
 //🔌📩🔄⚠️✅📡❌📤🎤🎧
 
 // === MQTT CLIENT INITIALIZATION ===
+// This creates a new MQTT client that will connect to the Raspberry Pi
 const client = new Paho.MQTT.Client(brokerHost, BROKER_PORT, mqttPath, "doorbell_" + makeid(6));
 
 // === MQTT EVENT HANDLERS ===
+// This code tells the app what to do if the connection to MQTT is lost
 client.onConnectionLost = () => {
-    console.warn("🔌 MQTT lost");
-    is_connected = false;
+    console.warn("🔌 MQTT lost");    // Show a warning message in the browser console
+    is_connected = false;            // Update the connection status to show we’re disconnected
 };
 
+// When a new message arrives through MQTT
 client.onMessageArrived = (message) => {
-    console.log("📩 MQTT msg from", message.destinationName);
+    console.log("📩 MQTT msg from", message.destinationName);    // Log where the message came from
 
+    // If it's a response from GPT (AI describing the image)
     if (message.destinationName === GPT_RESPONSE_TOPIC) {
-        handleGPTResponseUpdate(message.payloadString);
+        handleGPTResponseUpdate(message.payloadString);    // Show the AI's answer in the app
+    // If the backend is telling the app to update the camera display (on/off)
     } else if (message.destinationName === REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC) {
         console.log("🔄 Updating camera UI from backend");
-        setRemoteCameraMode(message.payloadString);
+        setRemoteCameraMode(message.payloadString);        // Turn the camera button and video display on or off
+     // If audio is being sent from the door microphone
     } else if (message.destinationName === LISTEN_AUDIO_RESPONSE_TOPIC) {
-        handleListenFromDoorMicrophone(message);
+        handleListenFromDoorMicrophone(message);            // Play the sound on the user's device
+    // If the message doesn't match any expected topic
     } else {
-        console.warn("⚠️ Unhandled MQTT topic:", message.destinationName);
+        console.warn("⚠️ Unhandled MQTT topic:", message.destinationName);    // Log that we got an unknown message
     }
 };
 
 // === CONNECT TO MQTT BROKER ===
+// This connects the web app to the Raspberry Pi's MQTT server (message system)
 client.connect({
-    useSSL: isSecure,
-    timeout: 5,
-    keepAliveInterval: 30,
+    useSSL: isSecure,            // Use secure connection (WSS) if the webpage is loaded with HTTPS
+    timeout: 5,                  // Give up if not connected within 5 seconds
+    keepAliveInterval: 30,       // Send a small ping every 30 seconds to keep the connection alive
+    // When the connection is successful
     onSuccess: () => {
         console.log(`✅ Connected to MQTT broker (${isSecure ? 'WSS' : 'WS'})`);
+        // Subscribe (listen) to important message topics
         [GPT_RESPONSE_TOPIC, REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC, LISTEN_AUDIO_RESPONSE_TOPIC].forEach(topic => {
             client.subscribe(topic, {
-                onSuccess: () => console.log("📡 Subscribed to:", topic),
-                onFailure: err => console.error("❌ Subscribe failed:", topic, err)
+                onSuccess: () => console.log("📡 Subscribed to:", topic),            // Show success message
+                onFailure: err => console.error("❌ Subscribe failed:", topic, err)  // Show error if it fails
             });
         });
-        is_connected = true;
-        disableControls(false);
+        is_connected = true;       // Mark that we are successfully connected
+        disableControls(false);    // Re-enable the buttons in the app
     },
+     // If the connection fails...
     onFailure: (err) => {
-        console.error("❌ MQTT connect failed:", err.errorMessage);
-        showAlert("MQTT Failure", err.errorMessage);
+        console.error("❌ MQTT connect failed:", err.errorMessage);    // Show error in console
+        showAlert("MQTT Failure", err.errorMessage);                   // Show an alert on the page
     }
 });
 
 // === AUDIO RECORDING ===
+// This code sets up the user's microphone so they can send voice messages through the doorbell
+
+// Check if the site is secure (HTTPS) and the browser supports microphone access
 if (location.protocol === "https:" && navigator.mediaDevices?.getUserMedia) {
+    // Ask the browser for permission to use the microphone
     navigator.mediaDevices.getUserMedia({
         audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
+            echoCancellation: true,    // Reduce echo
+            noiseSuppression: true,    // Filter out background noise
+            autoGainControl: true      // Automatically adjust volume levels
         }
     }).then(stream => {
+        // If permission is granted, create a recorder for the microphone audio
         mediaRecorder = new MediaRecorder(stream, {
-            mimeType: 'audio/webm;codecs=opus',
-            audioBitsPerSecond: 128000
+            mimeType: 'audio/webm;codecs=opus',       // Format for sending over the web
+            audioBitsPerSecond: 128000                // Quality setting for audio bitrate
         });
 
+        // Save audio chunks as they're recorded
         mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) audioChunks.push(event.data);
+            if (event.data.size > 0) audioChunks.push(event.data);   
         };
 
+        // When recording stops, combine and send the audio
         mediaRecorder.onstop = () => {
-            const blob = new Blob(audioChunks, { type: 'audio/wav' });
-            audioChunks = [];
+            const blob = new Blob(audioChunks, { type: 'audio/wav' }); // Combine chunks into one audio file
+            audioChunks = [];                    // Clear the buffer for next time
+            // Convert the audio blob to a byte array and send it through MQTT
             const reader = new FileReader();
             reader.onload = function () {
                 const uint8Array = new Uint8Array(this.result);
-                SendCommand(REMOTE_APP_AUDIO_DATA_TOPIC, uint8Array);
+                SendCommand(REMOTE_APP_AUDIO_DATA_TOPIC, uint8Array);    // Send audio to the doorbell
                 console.log("📤 Sent audio chunk:", uint8Array.length);
             };
             reader.readAsArrayBuffer(blob);
         };
-    }).catch(err => {
+    }).catch(err => {    // If something goes wrong (like no permission), show an alert
         alert("🎤 Microphone access error: " + err);
     });
-} else {
+} else {    // If the site is not using HTTPS, or the browser doesn't support mic access, show a warning
     console.warn("⚠️ Microphone not initialized. Please run the site over HTTPS to enable audio recording.");
 }
 
 // === BUTTON EVENTS ===
+// This code controls what happens when the user clicks the "Talk" button
+
 talk_button.addEventListener('click', () => {
+    // If the button currently says "Talk", start recording audio
     if (talk_button.innerText === "Talk") {
-        talk_button.innerText = "Stop Talking";
-        mediaRecorder?.start();
+        talk_button.innerText = "Stop Talking";    // Change the button label
+        mediaRecorder?.start();                    // Start recording the user's voice
     } else {
-        talk_button.innerText = "Talk";
-        mediaRecorder?.stop();
+        // If the button says "Stop Talking", stop recording
+        talk_button.innerText = "Talk";           // Change the button label back
+        mediaRecorder?.stop();                    // Stop the recording and send the audio
     }
 });
 
