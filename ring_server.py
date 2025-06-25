@@ -99,124 +99,147 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             logging.error(f"Handler error: {e}")
 
     def _send_file_response(self, content, content_type):
-        self.send_response(200)
-        self.send_header('Content-type', content_type)
-        self.send_header('Content-Length', len(content))
-        self.send_header('Cache-Control', 'no-cache')
-        self.end_headers()
-        self.wfile.write(content)                     # Send file content
+        self.send_response(200)                            # Send a "200 OK" response to let the browser know the request was successful
+        self.send_header('Content-type', content_type)     # Tell the browser what type of file is being sent (HTML, JavaScript, CSS, etc.)
+        self.send_header('Content-Length', len(content))   # Tell the browser how big the file is (in bytes)
+        self.send_header('Cache-Control', 'no-cache')      # Tell the browser not to store a cached copy — always ask for a fresh one
+        self.end_headers()                                 # Finish sending the headers
+        self.wfile.write(content)                          # Now actually send the content of the file to the browser
 
     def _handle_stream(self):
-        print("📡 MJPEG stream requested")
-        self.send_response(200)
-        self.send_header('Cache-Control', 'no-cache, private')
-        self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
-        self.end_headers()
+        print("📡 MJPEG stream requested")     # Show in the terminal that a video stream was requested, for debugging
+        self.send_response(200)                 # Tell the browser we’re sending a live stream
+        self.send_header('Cache-Control', 'no-cache, private')   # Tell the browser not to cache (save) this stream
+        self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')  # Tell the browser we’re sending multiple JPEG images in a row ("multipart stream")
+        self.end_headers()      # Finish sending headers
         try:
             while True:
+                # Wait until a new frame (image) is available
                 with output.condition:
-                    output.condition.wait(timeout=1)
-                    frame = output.frame
+                    output.condition.wait(timeout=1) # Wait up to 1 second
+                    frame = output.frame             # Get the latest camera frame
                 if frame:
+                    # Start a new image section
                     self.wfile.write(b'--FRAME\r\n')
+
+                    # Send image headers
                     self.send_header('Content-Type', 'image/jpeg')
                     self.send_header('Content-Length', len(frame))
                     self.end_headers()
+
+                    # Send the actual image data
                     self.wfile.write(frame)
-                    self.wfile.write(b'\r\n')
-                    self.wfile.flush()
+                    self.wfile.write(b'\r\n')    # End the image section
+                    self.wfile.flush()           # Make sure it gets sent immediately
         except (BrokenPipeError, ConnectionResetError):
+             # If the user closes the browser or the connection breaks, just log a warning
             logging.warning("⚠️ MJPEG stream broken")
 
 # === Threaded HTTP Server ===
 class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
-    allow_reuse_address = True
-    daemon_threads = True
+    # This class creates a special web server that can handle multiple users at once
+    allow_reuse_address = True # Allow the server to quickly restart without waiting for the port to be freed
+    daemon_threads = True      # Run each connection in the background (so the server doesn’t get stuck)
 
 # === Camera Frame Capture Loop ===
 def camera_capture_loop():
-    global camera_on
-    while True:
+    global camera_on # This tells the function whether the camera should be running
+    while True:      # Keep running this loop forever
         if not camera_on:
-            time.sleep(0.1)
-            continue
+            time.sleep(0.1)  # If the camera is off, wait a short time and check again
+            continue         # Skip the rest and restart the loop
         try:
-            frame = camera.capture_array()    # Capture frame as numpy array
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
-            output.write(rgb_frame)
-            time.sleep(1 / 24)               # Target 24 FPS
+            # Take a picture (called a frame) from the camera
+            frame = camera.capture_array()    # This gives the image as a NumPy array (used by OpenCV)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) # Convert the color format from BGR (used by OpenCV) to RGB (used by most other systems)
+            output.write(rgb_frame)           # Save the image so it can be shown on the website
+            time.sleep(1 / 24)                # Wait a tiny bit to target about 24 frames per second (like a movie)
         except Exception as e:
-            print("⚠️ Frame capture error:", e)
+            print("⚠️ Frame capture error:", e) # If something goes wrong (e.g., camera error), show a warning
 
 # === Turn Camera On or Off ===
 def cameraControl(mode):
-    global camera_on
+    global camera_on        # This keeps track of whether the camera is currently running
+
+    # === Turn the camera ON ===
     if mode == "on" and not camera_on:
-        camera.configure(camera.create_video_configuration(main={"size": (640, 480)}))
-        camera.start()
+        camera.configure(camera.create_video_configuration(main={"size": (640, 480)})) # Set up the camera with a resolution of 640x480
+        camera.start()      # Start the camera
+
+        # Manually adjust camera settings:
+        # - AwbMode 0: Turns off automatic white balance
+        # - ColourGains: Boosts red and blue to fix color tones
         camera.set_controls({
             "AwbMode": 0,
             "ColourGains": (1.5, 2)  
         })
-        camera_on = True
-        print("📸 Camera started")
+        camera_on = True             # Update the status to say the camera is on
+        print("📸 Camera started")   # Start capturing frames in the background
         threading.Thread(target=camera_capture_loop, daemon=True).start()
+
+     # === Turn the camera OFF ===
     elif mode == "off" and camera_on:
-        camera.stop()
-        camera_on = False
+        camera.stop()                # Stop the camera
+        camera_on = False            # Update the status
         print("🛑 Camera stopped")
 
 # === Start Camera from App or Motion ===
 def startCamera():
-    global manual_override
-    if not camera_on:
-        cameraControl("on")
-        client.publish(REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC, "on")
-        if args.mode == "motion":
-            manual_override = False
+    global manual_override          # This flag prevents the camera from turning on again too soon in motion mode
+    if not camera_on:               # Only turn on the camera if it's currently off
+        cameraControl("on")         # Call the function to turn on the camera
+        client.publish(REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC, "on")    # Send a message over MQTT so the app knows the camera is now on
+        if args.mode == "motion":    # If we're using motion detection mode...
+            manual_override = False  # Allow motion to trigger the camera again in the future
 
 # === Stop Camera and Activate Override ===
 def stopCamera():
-    global manual_override, manual_override_reset_thread
-    if camera_on:
-        cameraControl("off")
-        client.publish(REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC, "off")
+    global manual_override, manual_override_reset_thread  # Use shared variables to manage override behavior
+    if camera_on:                                         # Only stop the camera if it’s currently running
+        cameraControl("off")                              # Turn the camera off
+        client.publish(REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC, "off")    # Let the web app know the camera has been turned off
         print("🚫 Manual stop triggered — override active.")
+        # If we're in motion-detection mode...
         if args.mode == "motion":
-            manual_override = True
+            manual_override = True            # Temporarily block motion from turning the camera back on
+            # Start a timer to automatically reset the override later (if one isn't already running)
             if not manual_override_reset_thread or not manual_override_reset_thread.is_alive():
                 manual_override_reset_thread = threading.Thread(target=reset_manual_override, daemon=True)
                 manual_override_reset_thread.start()
 
 # === Reset Manual Override After Delay ===
 def reset_manual_override():
-    global manual_override
-    print(f"🕒 Manual override reset in {manual_override_reset_time}s")
-    time.sleep(manual_override_reset_time)
-    manual_override = False
-    print("✅ Manual override lifted.")
+    global manual_override            # Use the shared override setting
+    print(f"🕒 Manual override reset in {manual_override_reset_time}s") # Let the user know how long the override will last
+    time.sleep(manual_override_reset_time)    # Wait for the specified number of seconds (usually 60)
+    manual_override = False                   # Turn off the override so motion detection can trigger the camera again
+    print("✅ Manual override lifted.")       # Let the user know it's OK to use motion detection again
 
 # === Motion Sensor Trigger ===
 def handleMotionMode():
-    global manual_override
-    print("👀 Motion detected!")
+    global manual_override                # This flag temporarily blocks the camera from turning on again too soon
+    print("👀 Motion detected!")         # Let the user know motion was sensed
+    
+    # Only turn on the camera if:
+    # - It's currently off
+    # - It's not being blocked by the override
     if not camera_on and not manual_override:
-        startCamera()
+        startCamera()        # Turn on the camera
     else:
-        print("🛑 Motion ignored.")
+        print("🛑 Motion ignored.")    # If camera is already on or override is active, do nothing
 
 # === Button Press Trigger ===
 def handleButtonMode():
-    startCamera()
+    startCamera()    # When the doorbell button is pressed, turn on the camera
 
 # === List ALSA Audio Output Devices ===
 def list_alsa_playback_devices():
     try:
-        result = subprocess.run(["aplay", "-L"], capture_output=True, text=True, check=True)
-        return [line.strip() for line in result.stdout.splitlines() if line and not line.startswith(" ")]
+        result = subprocess.run(["aplay", "-L"], capture_output=True, text=True, check=True)  # Run the command "aplay -L" to list all sound output devices
+        return [line.strip() for line in result.stdout.splitlines() if line and not line.startswith(" ")] # Go through each line of the result, remove spaces, and return a clean list of device names
     except subprocess.CalledProcessError as e:
-        print("❌ Error listing ALSA devices:", e)
-        return []
+        print("❌ Error listing ALSA devices:", e) # If something goes wrong, print an error message
+        return []                                   # Return an empty list if there was a problem
 
 # === Select a Bluetooth Audio Device if Available ===
 def select_bluetooth_output_device(preferred_keywords=["bluealsa", "bluetooth", "BT"]):
