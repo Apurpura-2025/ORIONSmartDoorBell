@@ -348,7 +348,7 @@ def handleGPTRequest():
     #Comment out this line when AI integration is enabled
     client.publish(GPT_RESPONSE_TOPIC, payload="Awaiting AI integration...", qos=0, retain=False)
     
-    ## AI intergration. Delete """ on either end to enable.
+    ## AI integration. Delete """ on either end to enable.
     """
     # This line tells the app we're waiting for the AI's response
     client.publish(GPT_RESPONSE_TOPIC, payload="waiting for the AI to Answer...", qos=0, retain=False)
