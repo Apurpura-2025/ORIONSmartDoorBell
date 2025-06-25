@@ -1,36 +1,41 @@
 // === DOM ELEMENT REFERENCES ===
-const camera_image = document.getElementById('camera_image');       // Image element for MJPEG stream
-const messageDiv = document.getElementById('response');             // GPT response text area
-const camera_button = document.getElementById('camera_control');    // Start/Stop Camera button
-const gpt_button = document.getElementById('gpt_control');          // Ask GPT button
-const listen_button = document.getElementById('listen_control');    // Listen to door mic button
-const talk_button = document.getElementById('talk_control');        // Talk into door speaker button
-const audio_player = document.getElementById("audioPlayer");        // Audio player for listening response
-const volume_up_button = document.getElementById("volume_up");      // Volume up button
-const volume_down_button = document.getElementById("volume_down");    // Volume down button
+// These lines find and save parts of the webpage so we can control them with JavaScript
+const camera_image = document.getElementById('camera_image');       // This is the live camera feed (video stream)
+const messageDiv = document.getElementById('response');             // This is where the GPT description (AI response) will appear
+const camera_button = document.getElementById('camera_control');    // This is the button the user clicks to start or stop the camera
+const gpt_button = document.getElementById('gpt_control');          // This button asks the AI to describe what it sees from the camera
+const listen_button = document.getElementById('listen_control');    // This button lets the user listen to the microphone at the door
+const talk_button = document.getElementById('talk_control');        // This button lets the user speak through the doorbell speaker
+const audio_player = document.getElementById("audioPlayer");        // This is a hidden audio player that plays sounds from the door microphone
+const volume_up_button = document.getElementById("volume_up");      // This button increases the speaker volume
+const volume_down_button = document.getElementById("volume_down");  // This button decreases the speaker volume
 
 // === MQTT TOPIC CONSTANTS ===
-const REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC = "ring/remote_app_control/camera";
-const REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC = "ring/local_dev_control/camera";
-const REMOTE_APP_MICROPHONE_CONTROL_TOPIC = "ring/remote_app_control/microphone";
-const REMOTE_APP_AUDIO_DATA_TOPIC = "ring/remote_app_audio_data";
-const GPT_RESPONSE_TOPIC = "ring/gptresponse";
-const GPT_REQUEST_TOPIC = "ring/gptrequest";
-const LISTEN_AUDIO_RESPONSE_TOPIC = "ring/audioresponse";
-const VOLUME_CONTROL_TOPIC = "ring/remote_app_control/volume";
+// These are the "channels" used to send and receive messages between the webpage and the Raspberry Pi
+const REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC = "ring/remote_app_control/camera";    // Used to tell the Raspberry Pi to turn the camera on or off (from the app)
+const REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC = "ring/local_dev_control/camera";     // Used by the Raspberry Pi to update the app with the camera's status
+const REMOTE_APP_MICROPHONE_CONTROL_TOPIC = "ring/remote_app_control/microphone";  // Used to start or stop listening through the door microphone
+const REMOTE_APP_AUDIO_DATA_TOPIC = "ring/remote_app_audio_data";                  // Used to send the user's voice from the web app to the doorbell speaker
+const GPT_RESPONSE_TOPIC = "ring/gptresponse";                                     // The topic where the AI (GPT) sends back its image description
+const GPT_REQUEST_TOPIC = "ring/gptrequest";                                       // The topic where the app asks the AI to describe the current camera image
+const LISTEN_AUDIO_RESPONSE_TOPIC = "ring/audioresponse";                          // The topic used to send door microphone audio back to the web app
+const VOLUME_CONTROL_TOPIC = "ring/remote_app_control/volume";                     // Used to change the speaker volume (up or down)
 
 // === GLOBAL VARIABLES ===
-let is_connected = false;
-let mediaRecorder;
-let audioChunks = [];
-let cameraRetryCount = 0;
-const MAX_RETRIES = 3;
+// These are shared values that the program uses throughout its operation
+let is_connected = false;    // This keeps track of whether the webpage is connected to the MQTT messaging system
+let mediaRecorder;           // This will be used to record audio from the user’s microphone
+let audioChunks = [];        // This is where small pieces of recorded audio are stored before being sent
+let cameraRetryCount = 0;    // Counts how many times we've tried to reload the camera stream (if it fails)
+const MAX_RETRIES = 3;       // The maximum number of times to retry loading the camera before giving up
 
 // === CONNECTION SECURITY CONFIG ===
-const isSecure = location.protocol === "https:";
-const BROKER_PORT = isSecure ? 9002 : 9001;
-const brokerHost = "PI's IP";  // Replace with your Pi's IP
-const mqttPath = "/mqtt";
+// These settings help the app know how to securely connect to the MQTT server
+const isSecure = location.protocol === "https:";    // This checks if the webpage is loaded using HTTPS (secure connection)
+const BROKER_PORT = isSecure ? 9002 : 9001;         // If using HTTPS, use port 9002 (secure MQTT); otherwise use port 9001 (insecure MQTT)
+const brokerHost = "PI's IP";                       // Replace with your Pi's IP. This should be the IP address of your Raspberry Pi (example: "192.168.1.100") 
+const mqttPath = "/mqtt";                           // This is the path used by the browser to connect to the MQTT server over WebSocket
+
 
 //🔌📩🔄⚠️✅📡❌📤🎤🎧
 
