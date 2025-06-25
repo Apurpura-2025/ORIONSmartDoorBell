@@ -243,111 +243,126 @@ def list_alsa_playback_devices():
 
 # === Select a Bluetooth Audio Device if Available ===
 def select_bluetooth_output_device(preferred_keywords=["bluealsa", "bluetooth", "BT"]):
-    global selected_output_device
-    if selected_output_device:
+    global selected_output_device        # Keep track of the chosen speaker (so we don't repeat the search)
+    if selected_output_device:           # If we already selected a speaker before, just reuse it
         return selected_output_device
-    for device in list_alsa_playback_devices():
-        for keyword in preferred_keywords:
+    for device in list_alsa_playback_devices():    # Go through the list of available sound output devices
+        for keyword in preferred_keywords:            # Look for devices that have Bluetooth-related names
             if keyword.lower() in device.lower():
-                selected_output_device = device
-                print(f"✅ Selected BT device: {device}")
+                selected_output_device = device       # Save the selected device name
+                print(f"✅ Selected BT device: {device}")    # Show which one was chosen
                 return device
+    # If no Bluetooth speaker was found, use the system default
     selected_output_device = "default"
     print("⚠️ No BT device found. Using 'default'")
     return selected_output_device
 
 def get_bt_sink_name():
     try:
+        # Run a command to list all available audio sinks (output devices) using PulseAudio
         result = subprocess.run(["pactl", "list", "short", "sinks"], capture_output=True, text=True)
+        # Go through each line of the result
         for line in result.stdout.splitlines():
-            if "bluez_output" in line:
-                return line.split()[1]  # return sink name
-    except Exception as e:
+            if "bluez_output" in line:    # Look for a line that includes "bluez_output" (which means it's a Bluetooth speaker)
+                return line.split()[1]    # Return the name of the Bluetooth sink (the speaker's ID)
+    except Exception as e:    # If something goes wrong (like the command fails), show an error message
         print("❌ Could not find Bluetooth sink:", e)
-    return None
+    return None    # If no Bluetooth speaker was found, return None
 
 def get_current_volume_percent(sink):
-    try:
+    try: # Run a system command to get detailed info about all sound output devices
         result = subprocess.run(["pactl", "list", "sinks"], capture_output=True, text=True)
-        inside_sink = False
-        for line in result.stdout.splitlines():
-            if sink in line:
+        inside_sink = False    # Flag to know when we're looking at the right speaker (sink)
+        for line in result.stdout.splitlines():    # Go through each line of the output
+            if sink in line:     # If we find the sink we're looking for, mark that we're inside its info block
                 inside_sink = True
+            
+            # If we're inside the sink block and we find a line that shows volume
             elif inside_sink and "Volume:" in line and "Channel" not in line:
-                match = re.search(r"(\d+)%", line)
+                match = re.search(r"(\d+)%", line) # Look for a number followed by a % (like "45%")
                 if match:
-                    return int(match.group(1))
+                    return int(match.group(1))     # Return the volume as an integer
+
+            # If we hit a blank line while inside the sink block, we’ve reached the end
             elif inside_sink and line.strip() == "":
                 break  # end of this sink's block
     except Exception as e:
-        print("❌ Could not get volume:", e)
-    return None
+        print("❌ Could not get volume:", e)    # If something goes wrong, show an error message
+    return None        # If volume wasn't found, return None
 
 def change_volume(direction):
+    # Step 1: Find the name of the Bluetooth speaker (sink)
     sink = get_bt_sink_name()
     if not sink:
         print("⚠️ Bluetooth sink not found.")
-        return
-
+        return    # Stop if no Bluetooth speaker is connected
+    # Step 2: Get the current volume level of the speaker    
     current = get_current_volume_percent(sink)
     if current is None:
         print("⚠️ Could not read current volume.")
-        return
-
+        return    # Stop if we can’t find out the current volume
+        
+    # Step 3: Decide the new volume based on the direction ("up" or "down")
     new_volume = current + 5 if direction == "up" else current - 5
-    new_volume = max(0, min(100, new_volume))  # clamp between 0% and 100%
+    
+    # Step 4: Make sure the volume stays between 0% and 100%
+    new_volume = max(0, min(100, new_volume)) 
 
-    try:
+    try:    # Step 5: Use a system command to set the new volume
         subprocess.run(["pactl", "set-sink-volume", sink, f"{new_volume}%"], check=True)
-        print(f"🔊 Volume set to {new_volume}%")
+        print(f"🔊 Volume set to {new_volume}%")    # Confirm the change
     except subprocess.CalledProcessError as e:
-        print(f"❌ Volume change error: {e}")
+        print(f"❌ Volume change error: {e}")       # If the command fails, print an error
         
 def handleButtonMode():
-    global last_bell_time
-
-    now = time.time()
-    if now - last_bell_time < BELL_COOLDOWN_SECONDS:
+    global last_bell_time    # Keeps track of the last time the button was pressed
+    now = time.time()        # Get the current time in seconds
+    if now - last_bell_time < BELL_COOLDOWN_SECONDS:    # If the bell was pressed too recently, ignore this press to prevent spamming
         print("⏳ Bell on cooldown. Ignoring press.")
-        return  # Exit early
-
-    last_bell_time = now
-
-    # Play bell sound using ffplay
+        return  # Exit early and do nothing
+    last_bell_time = now # Update the time so we know when the bell was last pressed
+    
+    # === Play bell sound using ffplay (a media player) ===
     try:
-        env = os.environ.copy()
-        env["DISPLAY"] = ":0"
-        env["PULSE_RUNTIME_PATH"] = f"/run/user/{os.getuid()}/pulse"
+        env = os.environ.copy()    # Copy the current environment variables
+        env["DISPLAY"] = ":0"      # Needed for desktop audio routing
+        env["PULSE_RUNTIME_PATH"] = f"/run/user/{os.getuid()}/pulse"  # Path to the audio system
+        # Start playing the bell sound as a background process
         subprocess.Popen(
-            ["ffplay", "-nodisp", "-autoexit", "bell1.mp3"],
-            stdout=subprocess.DEVNULL,
+            ["ffplay", "-nodisp", "-autoexit", "bell1.mp3"],    # Play without video, exit when done
+            stdout=subprocess.DEVNULL,    # Don’t show output in terminal
             stderr=subprocess.DEVNULL,
-            env=env
+            env=env        # Use the updated environment
         )
         print("🔔 Bell sound played with ffplay")
     except Exception as e:
         print(f"❌ Failed to play bell sound: {e}")
 
-    # In manual mode, also turn on the camera
+    # === If the system is in manual mode, also turn on the camera ===
     if args.mode == "manual":
-        startCamera()
+        startCamera()    # Start the camera feed
 
 # === Send Image to OpenAI GPT-4o and Publish Response ===
 def handleGPTRequest():
     
     #Comment out this line when AI integration is enabled
-    #client.publish(GPT_RESPONSE_TOPIC, payload="Awaiting AI integration...", qos=0, retain=False)
+    client.publish(GPT_RESPONSE_TOPIC, payload="Awaiting AI integration...", qos=0, retain=False)
     
     ## AI intergration. Delete """ on either end to enable.
+    """
+    # This line tells the app we're waiting for the AI's response
     client.publish(GPT_RESPONSE_TOPIC, payload="waiting for the AI to Answer...", qos=0, retain=False)
     try:
-        buffer = io.BytesIO()
-        camera.capture_file(buffer, format='jpeg')
-        buffer.seek(0)
+        # === Step 1: Capture an image from the camera and store it in memory ===
+        buffer = io.BytesIO()    # Create an in-memory buffer to store image data
+        camera.capture_file(buffer, format='jpeg')    # Take a picture and save it to the buffer
+        buffer.seek(0)            # Rewind to the beginning of the buffer so we can read it
+        # === Step 2: Convert the image to base64 format (needed for sending to GPT) ===
         img_b64 = base64.b64encode(buffer.read()).decode('utf-8')
 
+        # === Step 3: Prepare the request to send to OpenAI's GPT-4o model ===
         payload = {
-            "model": "gpt-4o",
+            "model": "gpt-4o",    # Tells OpenAI which AI model to use
             "messages": [{
                 "role": "user",
                 "content": [
@@ -355,81 +370,101 @@ def handleGPTRequest():
                     {"type": "image_url", "image_url": { "url": f"data:image/jpeg;base64,{img_b64}" }}
                 ]
             }],
-            "max_tokens": 400
+            "max_tokens": 400    # Limits the length of the AI’s response
         }
 
-        headers = { "Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json" }
+        # === Step 4: Set up headers, including your OpenAI API key ===
+        headers = { "Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json" } # Authenticates the request
+
+        # === Step 5: Send the image and prompt to OpenAI ===
         response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-        response.raise_for_status()
+        response.raise_for_status()        # Raises an error if the request fails
+
+        # === Step 6: Extract and print the AI's response ===
         result = response.json()['choices'][0]['message']['content']
         print("🤖 GPT:", result)
+
+         # === Step 7: Send the result back to the web app via MQTT ===
         client.publish(GPT_RESPONSE_TOPIC, payload=result, qos=0, retain=False)
 
-    except Exception as e:
+    except Exception as e:    # If something goes wrong, show and send an error message
         error_msg = f"❌ GPT error: {e}"
         print(error_msg)
         client.publish(GPT_RESPONSE_TOPIC, payload=error_msg, qos=0, retain=False)
+        """
 
 # === MQTT Callback Handlers ===
 def on_message(client, userdata, msg):
-    topic = msg.topic
-    print("📩 MQTT:", topic)
+    topic = msg.topic           # Get the topic (channel) of the message
+    print("📩 MQTT:", topic)    # Print the topic to the terminal for debugging
+    
+    # === 1. Handle Camera On/Off Request ===
     if topic == REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC:
-        cameraControl(msg.payload.decode())
+        cameraControl(msg.payload.decode())    # Turn the camera on or off based on the message content ("on" or "off")
+    
+    # === 2. Handle Microphone Control Request ===
     elif topic == REMOTE_APP_MICROPHONE_CONTROL_TOPIC:
-        command = msg.payload.decode().lower()
+        command = msg.payload.decode().lower()    # Get the command: "on" or "off"
         print("🎤 Microphone control:", command)
         if command == "on":
-            audio_streamer.StartPlaying()
+            audio_streamer.StartPlaying()    # Start streaming microphone audio
         elif command == "off":
-            audio_streamer.StopPlaying()
+            audio_streamer.StopPlaying()     # Stop streaming audio
+    
+    # === 3. Handle GPT Image Description Request ===
     elif topic == GPT_REQUEST_TOPIC:
-        threading.Thread(target=handleGPTRequest, daemon=True).start()
+        threading.Thread(target=handleGPTRequest, daemon=True).start()    # Start a new background thread to handle the AI image description
+
+    # === 4. Handle Incoming Audio from the Web App ===
     elif topic == REMOTE_APP_AUDIO_DATA_TOPIC:
         print("🔈 Audio chunk received — converting and playing.")
         try:
-            import tempfile
+            import tempfile    # Used to temporarily save the audio file
 
-            # Save the received blob to a temp file
+             # Save the received audio data (webm format) to a temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as raw_file:
                 raw_file.write(msg.payload)
                 raw_file.flush()
                 raw_path = raw_file.name
 
-            # Convert to WAV using ffmpeg
+            # Convert the webm file to wav format using ffmpeg
             wav_path = raw_path.replace(".webm", ".wav")
             subprocess.run(["ffmpeg", "-y", "-i", raw_path, wav_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["aplay", wav_path]) # Play the converted audio using aplay (built-in audio player)
 
-            # Play it
-            subprocess.run(["aplay", wav_path])
-
-            # Clean up
+            # Delete the temporary files after use
             os.unlink(raw_path)
             os.unlink(wav_path)
 
         except Exception as e:
             print("❌ Audio playback failed:", e)
-            
+    
+    # === 5. Handle Volume Change Request ===
     elif topic == VOLUME_CONTROL_TOPIC:
         direction = msg.payload.decode()
         print(f"🔊 Volume change requested: {direction}")
         change_volume(direction)
 
 def on_connect(client, userdata, flags, rc, properties=None):
-    print("✅ MQTT connected:", rc)
-    for t in [REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC, GPT_REQUEST_TOPIC,
-              REMOTE_APP_MICROPHONE_CONTROL_TOPIC, REMOTE_APP_AUDIO_DATA_TOPIC,
-              VOLUME_CONTROL_TOPIC]:
-        client.subscribe(t)
-    print("📡 Subscribed to all topics.")
+    print("✅ MQTT connected:", rc)        # Confirm that the system connected to the MQTT server
+    
+     # Subscribe to each topic so the Raspberry Pi can listen for specific messages
+    for t in [REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC,     # For turning the camera on/off
+              GPT_REQUEST_TOPIC,                         # For requesting an image description from GPT
+              REMOTE_APP_MICROPHONE_CONTROL_TOPIC,       # For turning the microphone on/off
+              REMOTE_APP_AUDIO_DATA_TOPIC,               # For receiving audio sent from the app
+              VOLUME_CONTROL_TOPIC]:                     # For increasing/decreasing speaker volume
+        client.subscribe(t)                # Tell MQTT: "I want to hear messages sent to this topic"
+    print("📡 Subscribed to all topics.") # Let the user know it's ready to receive commands
 
 def on_disconnect(client, userdata, flags, rc, properties=None):
-    print("🔌 MQTT disconnected:", rc)
-    stopCamera()
+    print("🔌 MQTT disconnected:", rc)    # Show a message when the system loses connection to MQTT
+    stopCamera()                           # Turn off the camera as a safety step
 
 # === Main Program Execution ===
 if __name__ == '__main__':
-    # Define MQTT topics
+    # === 1. Define MQTT Topics (Communication Channels) ===
+    # These are like labeled mailboxes for different features
     REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC = "ring/remote_app_control/camera"
     REMOTE_DEV_CAMERA_ONOFF_CONTROL_TOPIC = "ring/local_dev_control/camera"
     REMOTE_APP_MICROPHONE_CONTROL_TOPIC = "ring/remote_app_control/microphone"
@@ -438,41 +473,42 @@ if __name__ == '__main__':
     GPT_RESPONSE_TOPIC = "ring/gptresponse"
     VOLUME_CONTROL_TOPIC = "ring/remote_app_control/volume"
 
-    # Parse command line arguments
+    # === 2. Read Options From the Command Line ===
+    # Example: --mode motion or --secure on
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, default='manual', help='manual | motion')
     parser.add_argument('--secure', type=str, default='off')
     args = parser.parse_args()
 
-    # Initialize camera, GPIO, audio
-    pygame.mixer.init()
-    camera = Picamera2()
-    output = StreamingOutput()
-    button = Button(2)
-    pir = MotionSensor(4)
+    # === 3. Set Up Hardware and Systems ===
+    pygame.mixer.init()            # Start sound system
+    camera = Picamera2()           # Create camera object
+    output = StreamingOutput()     # Prepare video stream manager
+    button = Button(2)             # Button connected to GPIO pin 2
+    pir = MotionSensor(4)          # Motion sensor on GPIO pin 4
 
-    # Setup MQTT
-    client = paho.Client(transport="tcp")
-    client.on_message = on_message
-    client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
-    client.connect("127.0.0.1", 1883, 60)
-    client.loop_start()
+    # === 4. Connect to MQTT (Messaging System) ===
+    client = paho.Client(transport="tcp")        # Use plain TCP for local MQTT
+    client.on_message = on_message               # Define what to do when messages arrive
+    client.on_connect = on_connect               # Define what to do when connected
+    client.on_disconnect = on_disconnect         # Define what to do when disconnected
+    client.connect("127.0.0.1", 1883, 60)        # Connect to local MQTT broker
+    client.loop_start()                          # Start MQTT client in the background
 
-    # Setup audio playback
+    # === 5. Prepare Audio Streaming ===
     audio_streamer = audioUtils.AudioPlayback()
-    audio_streamer.SetMQTTClient(client, "ring/audioresponse")
-    audio_streamer.SetPlayBackFrameCount(80)
+    audio_streamer.SetMQTTClient(client, "ring/audioresponse")    # Topic for voice data
+    audio_streamer.SetPlayBackFrameCount(80)                 # Buffer size for streaming
 
-    # Configure GPIO events
+    # === 6. Set What Each Sensor Does ===
     if args.mode == "motion":
-        pir.when_motion = handleMotionMode
-    button.when_pressed = handleButtonMode
+        pir.when_motion = handleMotionMode    # Motion sensor triggers the camera
+    button.when_pressed = handleButtonMode    # Button press triggers bell + camera
 
-    # Start capturing frames in background
+    # === 7. Start Capturing Video Frames in the Background ===
     threading.Thread(target=camera_capture_loop, daemon=True).start()
 
-    # Create HTTP/HTTPS server
+    # === 8. Start the Web Server (HTTPS if secure mode is on) ===
     port = 8001 if args.secure == "on" else 8000
     server_address = ('', port)
     httpd = StreamingServer(server_address, StreamingHandler)
@@ -481,8 +517,9 @@ if __name__ == '__main__':
         cert_path = "./certs/ring_server.crt"
         key_path = "./certs/ring_server.key"
         if not os.path.exists(cert_path) or not os.path.exists(key_path):
-            print("❌ TLS certs missing.")
+            print("❌ TLS certs missing.")    # Can't run secure server without certs
             sys.exit(1)
+        # Create a secure HTTPS context
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(certfile=cert_path, keyfile=key_path)
         httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
@@ -490,11 +527,11 @@ if __name__ == '__main__':
     else:
         print(f"🌐 HTTP server on port {port}")
 
-    # Run server until interrupted
+     # === 9. Keep the Server Running Until Manually Stopped ===
     try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
+        httpd.serve_forever()    # Start the web server
+    except KeyboardInterrupt:    # If someone presses Ctrl+C...
         print("🛑 Shutting down...")
-        client.disconnect()
-        client.loop_stop()
-        camera.stop()
+        client.disconnect()      # Disconnect from MQTT
+        client.loop_stop()       # Stop MQTT background process
+        camera.stop()            # Turn off the camera
