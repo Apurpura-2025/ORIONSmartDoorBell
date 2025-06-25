@@ -155,132 +155,144 @@ talk_button.addEventListener('click', () => {
         mediaRecorder?.stop();                    // Stop the recording and send the audio
     }
 });
-
+// When the user clicks the "Ask GPT" button...
 gpt_button.addEventListener('click', () => {
+    // Check if the camera is currently running
     if (camera_button.innerText === "Stop Camera") {
-        SendCommand(GPT_REQUEST_TOPIC, "describe this image");
-        SendCommand(REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC, "off");
-        setRemoteCameraMode("off");
+        SendCommand(GPT_REQUEST_TOPIC, "describe this image");    // Send a message to ask GPT to describe what the camera sees
+        SendCommand(REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC, "off");// Tell the Raspberry Pi to turn the camera off afterward
+        setRemoteCameraMode("off");        // Update the button and video display on the webpage
     } else {
-        showAlert("Camera must be running", "Start camera before asking GPT.");
+        showAlert("Camera must be running", "Start camera before asking GPT.");    // If the camera isn’t running, show a message to the user
     }
 });
-
+// When the user clicks the "Listen" button...
 listen_button.addEventListener('click', () => {
-    const isListening = listen_button.innerText === "Listen";
-    listen_button.innerText = isListening ? "Stop Listening" : "Listen";
-    SendCommand(REMOTE_APP_MICROPHONE_CONTROL_TOPIC, isListening ? "on" : "off");
-
-    audio_player.style.display = "none";  // Hide the audio player
-    if (!isListening) {
+    const isListening = listen_button.innerText === "Listen";    // Check if the user is starting or stopping the listening
+    listen_button.innerText = isListening ? "Stop Listening" : "Listen";    // Update the button text based on the current state
+    SendCommand(REMOTE_APP_MICROPHONE_CONTROL_TOPIC, isListening ? "on" : "off");    // Send a message to the Raspberry Pi to turn the microphone on or off
+    audio_player.style.display = "none";  // Hide the audio player while switching states
+    if (!isListening) {    // If stopping listening, pause the audio and clear its source
         audio_player.pause();
         audio_player.src = "";
     }
 });
-
+// When the user clicks the "Start Camera" or "Stop Camera" button...
 camera_button.addEventListener('click', () => {
-    const mode = camera_button.innerText === "Start Camera" ? "on" : "off";
-    setRemoteCameraMode(mode);
-    SendCommand(REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC, mode);
+    const mode = camera_button.innerText === "Start Camera" ? "on" : "off";    // Decide what action to take based on the button text
+    setRemoteCameraMode(mode);                                                 // Update the webpage to reflect the new camera state
+    SendCommand(REMOTE_APP_CAMERA_ONOFF_CONTROL_TOPIC, mode);                  // Send a message to the Raspberry Pi to turn the camera on or off
 });
-
+// When the user clicks the "Vol +" button...
 volume_up_button.addEventListener('click', () => {
-    SendCommand(VOLUME_CONTROL_TOPIC, "up");
+    SendCommand(VOLUME_CONTROL_TOPIC, "up");    // Send a message to the Raspberry Pi to increase the speaker volume
 });
-
+// When the user clicks the "Vol -" button...
 volume_down_button.addEventListener('click', () => {
-    SendCommand(VOLUME_CONTROL_TOPIC, "down");
+    SendCommand(VOLUME_CONTROL_TOPIC, "down");    // Send a message to the Raspberry Pi to decrease the speaker volume
 });
 
 // === UI SYNC FUNCTIONS ===
+// These functions keep the webpage (UI) in sync with what's happening on the Raspberry Pi
+
+// This function updates the camera button and video display based on the camera state
 function setRemoteCameraMode(mode) {
     console.log("Remote camera mode set to:", mode);
-    camera_button.innerText = mode === "on" ? "Stop Camera" : "Start Camera";
+    camera_button.innerText = mode === "on" ? "Stop Camera" : "Start Camera"; // Change the button text to match the new state
 
-    if (mode === "on") {
-        camera_image.style.display = "inline";
-        cameraRetryCount = 0;
-        loadMJPEGStream();
-    } else {
-        camera_image.style.display = "none";
-        camera_image.src = "";
+    if (mode === "on") {    // If the camera is being turned on, show the video stream
+        camera_image.style.display = "inline";    // Make the image visible
+        cameraRetryCount = 0;                     // Reset retry count
+        loadMJPEGStream();                        // Start loading the video stream
+    } else {    // If the camera is being turned off, hide the image
+        camera_image.style.display = "none";      // Hide the video stream
+        camera_image.src = "";                    // Clear the image source
     }
 }
-
+// This function loads the MJPEG (motion JPEG) video stream from the Raspberry Pi
 function loadMJPEGStream() {
-    const timestamp = Date.now();
-    camera_image.src = `/stream.mjpg?ts=${timestamp}`;
+    const timestamp = Date.now();        // Add a unique timestamp to prevent caching
+    camera_image.src = `/stream.mjpg?ts=${timestamp}`; // Set the video stream URL with the timestamp
+    // If the video fails to load...
     camera_image.onerror = () => {
         console.error("❌ Failed to load MJPEG stream.");
-        cameraRetryCount++;
-        if (cameraRetryCount < MAX_RETRIES) {
+        cameraRetryCount++;                // Count the failed attempt
+        if (cameraRetryCount < MAX_RETRIES) {    // Try again after 1 second (if we haven't hit the retry limit)
             console.log("🔁 Retrying MJPEG stream...");
             setTimeout(loadMJPEGStream, 1000);
-        } else {
+        } else {                                 // If it still fails after several tries, show an error alert
             showAlert("Camera Error", "Unable to load video stream.");
         }
     };
 }
 
 // === AUDIO LISTEN HANDLER ===
+// This function plays audio that was recorded at the door and sent to the web app
 function handleListenFromDoorMicrophone(message) {
     try {
-        const blob = new Blob([message.payloadBytes], { type: 'audio/wav' });
-        const audioUrl = URL.createObjectURL(blob);
-        audio_player.src = audioUrl;
+        const blob = new Blob([message.payloadBytes], { type: 'audio/wav' });    // Step 1: Convert the received audio data into a playable audio file (WAV format)
+        const audioUrl = URL.createObjectURL(blob);                              // Step 2: Create a temporary URL for the audio file
+        audio_player.src = audioUrl;                                             // Step 3: Set the audio player's source to that URL and play it
         audio_player.play().catch(err => {
-            console.error("🎧 Audio playback failed:", err);
+            console.error("🎧 Audio playback failed:", err);    // Show error if the sound can't be played
         });
     } catch (err) {
-        console.error("❌ Failed to handle audio message:", err);
+        console.error("❌ Failed to handle audio message:", err);    // Show an error if something else goes wrong
     }
 }
 
 // === GPT UI RESPONSE HANDLER ===
+// This function updates the webpage when the AI (GPT) sends a response
 function handleGPTResponseUpdate(message) {
+    // If the AI is still thinking and hasn’t answered yet...
     if (message === "waiting for the AI to Answer...") {
-        gpt_button.disabled = true;
-        camera_button.disabled = true;
-        displaySpinner(true);
+        gpt_button.disabled = true;        // Disable the GPT button so the user can't click it again
+        camera_button.disabled = true;     // Disable the camera button temporarily
+        displaySpinner(true);              // Show a loading spinner on the screen
     } else {
-        displaySpinner(false);
-        gpt_button.disabled = false;
-        camera_button.disabled = false;
+        // When the AI responds...
+        displaySpinner(false);            // Hide the loading spinner
+        gpt_button.disabled = false;      // Re-enable the GPT button
+        camera_button.disabled = false;   // Re-enable the camera button
     }
+    // Show the AI's message in the response area
     messageDiv.innerText = message;
 }
 
 // === UTILITY FUNCTIONS ===
-function extractConnectedIP(address_bar) {
-    const ip_expr = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
-    const matches = address_bar.match(ip_expr);
-    return matches ? matches[0] : "127.0.0.1";
-}
+// These are helper functions used throughout the app
 
+// Get the IP address from the browser's address bar
+function extractConnectedIP(address_bar) {
+    const ip_expr = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;    // Pattern for IP addresses
+    const matches = address_bar.match(ip_expr);                  // Try to match the pattern
+    return matches ? matches[0] : "127.0.0.1";                   // Return found IP, or default to localhost
+}
+// Generate a random string of letters and numbers (used for unique MQTT client ID)
 function makeid(length) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
-
+// Show or hide the spinner while waiting for the AI
 function displaySpinner(show) {
-    document.getElementById('spinner').style.display = show ? 'block' : 'none';
-    camera_image.style.display = show ? 'none' : 'inline';
+    document.getElementById('spinner').style.display = show ? 'block' : 'none';    // Show or hide spinner
+    camera_image.style.display = show ? 'none' : 'inline';                         // Hide or show camera image
 }
-
+// Show a popup alert message to the user using SweetAlert
 function showAlert(title, text) {
-    Swal.fire({ title, text, icon: 'info', confirmButtonText: 'OK' });
+    Swal.fire({ title, text, icon: 'info', confirmButtonText: 'OK' });    // Nice-looking alert box
 }
-
+// Send a message over MQTT if connected
 function SendCommand(topic, payload) {
     if (!is_connected) {
-        console.warn("⚠️ MQTT not connected. Skipping send:", topic);
+        console.warn("⚠️ MQTT not connected. Skipping send:", topic);    // Warn if disconnected
         return;
     }
-    const msg = new Paho.MQTT.Message(payload);
-    msg.destinationName = topic;
-    client.send(msg);
+    const msg = new Paho.MQTT.Message(payload);    // Create a new message
+    msg.destinationName = topic;                   // Set which topic (channel) to send to
+    client.send(msg);                              // Send the message
 }
-
+// Enable or disable all control buttons at once
 function disableControls(status) {
     camera_button.disabled = status;
     gpt_button.disabled = status;
