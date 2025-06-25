@@ -42,41 +42,60 @@ BELL_COOLDOWN_SECONDS = 5                  # How many seconds must pass before t
 # === Class for MJPEG Streaming ===
 class StreamingOutput:
     def __init__(self):
-        self.frame = None                 # Most recent frame
-        self.condition = Condition()      # Threading condition to wait/notify frame updates
+        self.frame = None                 # This will hold the most recent camera image
+        self.condition = Condition()      # Threading condition to wait/notify frame updates. 
+                                          # Used to safely let other parts of the program know when a new frame is ready
 
     def write(self, frame):
-        _, jpeg = cv2.imencode('.jpg', frame)     # Encode OpenCV frame to JPEG
-        with self.condition:
-            self.frame = jpeg.tobytes()           # Store JPEG bytes
-            self.condition.notify_all()           # Notify all waiting threads
+        _, jpeg = cv2.imencode('.jpg', frame)     # Encode OpenCV frame to JPEG. Convert image to JPEG format (web-friendly)
+        with self.condition:                      # Lock access so this section is thread-safe
+            self.frame = jpeg.tobytes()           # Save the JPEG image as bytes
+            self.condition.notify_all()           # Wake up any waiting threads so they can send it to the browser
 
 # === HTTP Request Handler for Web Interface ===
 class StreamingHandler(server.BaseHTTPRequestHandler):
+    # This helper function reads the content of a file (like an HTML, CSS, or JS file)
+    # It will be used to send those files to the user's 
     def ReadClientApp(self, appfile, binary=False):
+        # Open the file in binary ('rb') if it's an image or other binary file,
+        # otherwise open it in normal text mode ('r') for things like HTML and JS
         with open(appfile, 'rb' if binary else 'r') as f:
-            return f.read()                       # Read static file content
+            return f.read() # Read and return the contents of the file
 
     def do_GET(self):
         try:
+            # === If the user types just the root address (like http://192.168.1.5/), redirect them to index.html ===
             if self.path == '/':
-                self.send_response(301)
-                self.send_header('Location', '/index.html')
+                self.send_response(301)                        # 301 means "redirect"
+                self.send_header('Location', '/index.html')    # Tell the browser to go to /index.html
                 self.end_headers()
+
+            # === If the user is requesting the main webpage ===
             elif self.path == '/index.html':
+                # Read the HTML file for the doorbell interface
                 content = self.ReadClientApp("./wwwroot/html_pages/client_ring_app.html").encode("utf-8")
-                self._send_file_response(content, 'text/html')
+                self._send_file_response(content, 'text/html') # Send it to the browser as a webpage
+
+            # === If the browser asks for the JavaScript file ===
             elif self.path == '/client_app.js':
                 content = self.ReadClientApp('./wwwroot/js/client_app.js').encode("utf-8")
-                self._send_file_response(content, 'application/javascript')
+                self._send_file_response(content, 'application/javascript') # Send JS code to browser
+
+            # === If the browser asks for the CSS (styling) file ===
             elif self.path == '/client_app_styles.css':
                 content = self.ReadClientApp('./wwwroot/css/client_app_styles.css').encode("utf-8")
-                self._send_file_response(content, 'text/css')
+                self._send_file_response(content, 'text/css') # Send CSS to style the page
+
+            # === If the browser is trying to start the camera video stream ===
             elif self.path.startswith('/stream.mjpg'):
-                self._handle_stream()
+                self._handle_stream()     # Start sending camera images one after another
+
+            # === If the path doesn’t match any of the above, show a 404 error ===
             else:
-                self.send_error(404)
+                self.send_error(404) # Page not found
+                
         except Exception as e:
+            # If something goes wrong, log the error for debugging
             logging.error(f"Handler error: {e}")
 
     def _send_file_response(self, content, content_type):
