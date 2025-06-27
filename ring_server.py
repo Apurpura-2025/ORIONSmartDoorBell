@@ -329,7 +329,7 @@ def handleButtonMode():
         env["PULSE_RUNTIME_PATH"] = f"/run/user/{os.getuid()}/pulse"  # Path to the audio system
         # Start playing the bell sound as a background process
         subprocess.Popen(
-            ["ffplay", "-nodisp", "-autoexit", "bell1.mp3"],    # Play without video, exit when done
+            ["ffplay", "-nodisp", "-autoexit", "./sounds/bell1.mp3"],    # Play without video, exit when done
             stdout=subprocess.DEVNULL,    # Don’t show output in terminal
             stderr=subprocess.DEVNULL,
             env=env        # Use the updated environment
